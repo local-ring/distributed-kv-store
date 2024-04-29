@@ -1,0 +1,35 @@
+{
+    "num_servers": 3,
+    "consistency_level": "linearizability",
+    "port_number": {
+        "0": [5810, 5320, 5430],
+        "1": [7431, 7421, 7241],
+        "2": [6352, 6622, 6972]       
+    },
+    "clients": [
+        {
+            "client_number": 0,
+            "requests": [
+                {"type": "set", "key": "a", "value": 10},
+                {"type": "get", "key": "a", "value": null}
+            ],
+            "server_number": 0
+        },
+        {
+            "client_number": 1,
+            "requests": [
+                {"type": "set", "key": "b", "value": 20},
+                {"type": "get", "key": "a", "value": null}
+            ],
+            "server_number": 1
+        },
+        {
+            "client_number": 2,
+            "requests": [
+                {"type": "set", "key": "a", "value": 30},
+                {"type": "get", "key": "b", "value": null}
+            ],
+            "server_number": 2
+        }
+    ]
+}

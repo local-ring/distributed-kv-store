@@ -1,0 +1,35 @@
+{
+    "num_servers": 3,
+    "consistency_level": "linearizability",
+    "port_number": {
+        "0": [3100, 3101, 3102],
+        "1": [3200, 3201, 3202],
+        "2": [3300, 3301, 3302]
+    },
+    "clients": [
+        {
+            "client_number": 0,
+            "requests": [
+                {"type": "set", "key": "a", "value": 10},
+                {"type": "get", "key": "a", "value": null}
+            ],
+            "server_number": 0
+        },
+        {
+            "client_number": 1,
+            "requests": [
+                {"type": "set", "key": "b", "value": 20},
+                {"type": "get", "key": "a", "value": null}
+            ],
+            "server_number": 1
+        },
+        {
+            "client_number": 2,
+            "requests": [
+                {"type": "set", "key": "a", "value": 30},
+                {"type": "get", "key": "b", "value": null}
+            ],
+            "server_number": 2
+        }
+    ]
+}
