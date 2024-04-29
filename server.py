@@ -6,6 +6,9 @@ import threading
 from collections import defaultdict
 import heapq
 
+
+HEARTBEAT = {"ping": "pong"}
+
 class Server:
     """
     This class represents a server in the cluster. It is responsible for handling the requests from the clients and other servers.
@@ -31,21 +34,26 @@ class Server:
         self.contacts = contacts
 
         self.context = zmq.Context()
-        self.recv_socket = self.context.socket(zmq.ROUTER) # to receive messages from the other servers
-        self.recv_socket.bind(f"tcp://*:{self.recv_port}")
-        print(f"Server {self.server_number} is ready to receive the messages")
+
+        self.send_socket = self.context.socket(zmq.PUB) # to send messages to the other servers
+        self.send_socket.bind(f"tcp://*:{self.send_port}")
+        # threading.Thread(target=self._daemon).start()
 
         self.api_socket = self.context.socket(zmq.REP) # to communicate with the clients
         self.api_socket.bind(f"tcp://*:{self.api_port}")
         print(f"Server {self.server_number} is ready to receive the requests from the clients")
 
-        # self.poller = zmq.Poller()
-        # self.poller.register(self.recv_socket, zmq.POLLIN)
-        # self.poller.register(self.api_socket, zmq.POLLIN)
-        # self.poller.register(self.send_socket, zmq.POLLIN)
+        self.recv_socket = self.context.socket(zmq.SUB) # to receive messages from the other servers
+        for contact in self.contacts:
+            recv_port = self.contacts[contact][1]
+            self.recv_socket.connect(f"tcp://localhost:{recv_port}")
+            print(f"Server {self.server_number} is connected to the server {contact}")
+        self.recv_socket.setsockopt_string(zmq.SUBSCRIBE, '')
 
-        self.send_socket = self.context.socket(zmq.DEALER) # to send messages to the other servers
-        self.send_socket.setsockopt(zmq.IDENTITY, str(self.server_number).encode())
+        self.poller = zmq.Poller()
+        self.poller.register(self.recv_socket, zmq.POLLIN)
+        self.poller.register(self.api_socket, zmq.POLLIN)
+        # self.poller.register(self.send_socket, zmq.POLLOUT)
 
 class Server_linearizability(Server):
     """
@@ -66,11 +74,11 @@ class Server_linearizability(Server):
 
         self.total_servers = len(self.contacts)
 
-        self.recv_thread = threading.Thread(target=self._server_handler)
-        self.recv_thread.start()
-
         self.api_thread = threading.Thread(target=self._client_handler)
         self.api_thread.start()
+
+        self.recv_thread = threading.Thread(target=self._server_handler)
+        self.recv_thread.start()
 
         self.queue_thread = threading.Thread(target=self._queue_handler)
         self.queue_thread.start()
@@ -81,33 +89,22 @@ class Server_linearizability(Server):
             self.lamport_clock = max(self.lamport_clock, timestamp) + 1
 
     def _broadcast(self, message):
-        for contact in self.contacts:
-            # if int(contact) == self.server_number:
-            #     continue
-            recv_port = self.contacts[contact][0]
-            self.send_socket.connect(f"tcp://localhost:{recv_port}")
-            # print(f"Server {self.server_number} is connected to the server {contact}")
-            self.send_socket.send_json(message)
-            # print(f"Server {self.server_number} sent message to server {contact}: {message}")
+        # for contact in self.contacts:
+        #     recv_port = self.contacts[contact][0]
+        #     self.send_socket.connect(f"tcp://localhost:{recv_port}")
+        #     # print(f"Server {self.server_number} is connected to the server {contact}")
+        #     self.send_socket.send_json(message)
+        #     # print(f"Server {self.server_number} sent message to server {contact}: {message}")
+        #     self.send_socket.disconnect(f"tcp://localhost:{recv_port}")
 
-            # while 1: # the server may not be ready to receive the messages
-            #     try:
-            #         self.send_socket.connect(f"tcp://localhost:{recv_port}")
-            #         print(f"Server {self.server_number} is connected to the server {contact}")
-            #         self.send_socket.send_json(message)
-            #         print(f"Server {self.server_number} sent message: {message}")
-            #         break
-            #     except zmq.error.ZMQError:
-            #         time.sleep(.1)
+        self.send_socket.send_json(message)
+
 
     def _queue_handler(self):
         while 1:
             if self.queue:
                 with self.queue_lock:
-                    # print(f"Server {self.server_number} queue: {self.queue}")
-                    # print(f"Server {self.server_number} acks: {self.acks}")
                     timestamp, id, operation, key, value = self.queue[0]
-
                     with self.acks_lock:
                         if self.acks[(timestamp, id, operation, key, value)] == self.total_servers:
                             timestamp, id, operation, key, value = heapq.heappop(self.queue)
@@ -139,18 +136,24 @@ class Server_linearizability(Server):
         This method is responsible for handling the requests from the clients.
         """
         while 1:
-            # socks = dict(self.poller.poll())
-            # if self.api_socket in socks:
-            message = self.api_socket.recv_json()
-            threading.Thread(target=self._heartbeat).start()
-            print(f"Server {self.server_number} received message: {message}")
-            self._update_clock()
-            broadcast_message = {"timestamp": self.lamport_clock,
-                                    "operation": message["type"],
-                                    "key": message["key"],
-                                    "value": message.get("value"),
-                                    "ack": 0}
-            self._broadcast(broadcast_message)
+            socks = dict(self.poller.poll())
+            if self.api_socket in socks:
+                message = self.api_socket.recv_json()
+                # threading.Thread(target=self._heartbeat).start()
+                # print(f"Server {self.server_number} received message: {message}")
+                self._update_clock()
+                broadcast_message = {"timestamp": self.lamport_clock,
+                                        "operation": message["type"],
+                                        "key": message["key"],
+                                        "value": message["value"],
+                                        "ack": 0,
+                                        "id": self.server_number}
+                self._broadcast(broadcast_message)
+
+    def _daemon(self):
+        while 1:
+            self.send_socket.send_json(HEARTBEAT)
+            time.sleep(0.5)
 
     def _server_handler(self):
         """
@@ -159,10 +162,12 @@ class Server_linearizability(Server):
         while 1:
             # socks = dict(self.poller.poll())
             # if self.recv_socket in socks:
-            id, message = self.recv_socket.recv_multipart()
-            id = int(id.decode())
-            message = json.loads(message.decode())
-            print(f"Server {self.server_number} received message from Server {id}: {message}")
+            message = self.recv_socket.recv_json()
+            if "ping" in message:
+                continue
+            # print(message)
+            id = message["id"]
+            # print(f"Server {self.server_number} received message from Server {id}: {message}")
             self._update_clock(message["timestamp"])
             if message["ack"] == 1: 
                 with self.acks_lock:
@@ -170,20 +175,68 @@ class Server_linearizability(Server):
             else: # id is the one who broadcasted the message
                 with self.queue_lock:
                     heapq.heappush(self.queue, (message["timestamp"], 
-                                                id, 
+                                                message["id"], 
                                                 message["operation"], 
                                                 message["key"], 
                                                 message["value"]))
                 self._update_clock()
                 ack_message = {"timestamp": self.lamport_clock, 
-                                "id": id,
+                                "id": message["id"],
                                 "operation": message["operation"],
                                 "key": message["key"],
                                 "value": message["value"],
                                 "ack": 1,
                                 "msg_timestamp": message["timestamp"]}
                 self._broadcast(ack_message)
-                    
+
+
+class Server_sequential(Server):
+    """
+    This class represents a server in the cluster with sequential consistency level.
+    """
+    def __init__(self, server_number, port_number, contacts):
+        super().__init__(server_number, port_number, contacts)
+
+        self.api_thread = threading.Thread(target=self._client_handler)
+        self.api_thread.start()
+
+        self.recv_thread = threading.Thread(target=self._server_handler)
+        self.recv_thread.start()
+
+    def _client_handler(self):
+        """
+        This method is responsible for handling the requests from the clients.
+        """
+        while 1:
+            socks = dict(self.poller.poll())
+            if self.api_socket in socks:
+                message = self.api_socket.recv_json()
+                # print(f"Server {self.server_number} received message: {message}")
+                if message["type"] == "set":
+                    self.kv_store[message["key"]] = message["value"]
+                    self.api_socket.send_string("success")
+                    print(f"Server {self.server_number} set the value of the key {message['key']} to {message['value']}")
+                elif message["type"] == "get":
+                    self.api_socket.send_string(f"{message['key']}:{self.kv_store[message['key']]}")
+                    print(f"Server {self.server_number} got the value of the key {message['key']} as {self.kv_store[message['key']]}")
+
+    def _server_handler(self):
+        """
+        This method is responsible for handling the requests from the other servers.
+        """
+        while 1:
+            socks = dict(self.poller.poll())
+            if self.recv_socket in socks:
+                message = self.recv_socket.recv_json()
+                # print(f"Server {self.server_number} received message: {message}")
+                if message["type"] == "set":
+                    self.kv_store[message["key"]] = message["value"]
+                    self.api_socket.send_string("success")
+                    print(f"Server {self.server_number} set the value of the key {message['key']} to {message['value']}")
+                elif message["type"] == "get":
+                    self.api_socket.send_string(f"{message['key']}:{self.kv_store[message['key']]}")
+                    print(f"Server {self.server_number} got the value of the key {message['key']} as {self.kv_store[message['key']]}")
+                        
                 
     
 if __name__ == "__main__":

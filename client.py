@@ -27,13 +27,14 @@ if __name__ == '__main__':
                             "key": request["key"], 
                             "value": request["value"]})
         print(f"Client {client_number} sent request: {request}, waiting for response...")
-        while 1:
-            response = socket.recv_string(zmq.NOBLOCK)
-            if response == "ping":
-                socket.send_string("pong")
-            else:
-                socket.send_string("gotcha")
-                break
+        response = socket.recv_string()
+        # while 1:
+        #     response = socket.recv_string(zmq.NOBLOCK)
+        #     if response == "ping":
+        #         socket.send_string("pong")
+        #     else:
+        #         socket.send_string("gotcha")
+        #         break
         print(f"Client {client_number} received response: {response}")
 
     
