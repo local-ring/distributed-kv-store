@@ -16,8 +16,9 @@ class Server:
     - set(key, value)
     - get(key)
 
-    It will handle the following requests from the other servers: # TODO: this is the critical part
-    - update(key, value)
+    It will handle the following message from the other servers:
+    - broadcast message
+    - broadcast acknoledgement
     """
     def __init__(self, server_number, port_number, contacts):
         """
@@ -119,7 +120,7 @@ class Server_linearizability(Server):
                                     self.api_socket.send_string(f"{key}:{self.kv_store[key]}")
                                     print(f"Server {self.server_number} got the value of the key {key} as {self.kv_store[key]}")
 
-            time.sleep(1)
+            # time.sleep(1)
                        
     def _heartbeat(self): # keep api_socket alive
         while 1:
