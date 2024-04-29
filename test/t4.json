@@ -1,0 +1,71 @@
+{
+    "num_servers": 4,
+    "consistency_level": "eventual",
+    "port_number": {
+        "0": [5310, 5420, 5830],
+        "1": [7411, 7361, 7291],
+        "2": [6352, 6472, 6592],
+        "3": [3413, 3363, 3293]   
+    },
+    "clients": [
+        {
+            "client_number": 0,
+            "requests": [
+                {"type": "set", "key": "a", "value": 100},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null}
+            ],
+            "server_number": 0
+        },
+        {
+            "client_number": 1,
+            "requests": [
+                {"type": "set", "key": "a", "value": 200},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null}
+            ],
+            "server_number": 1
+        },
+        {
+            "client_number": 2,
+            "requests": [
+                {"type": "set", "key": "a", "value": 300},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null}
+            ],
+            "server_number": 2
+        },
+        {
+            "client_number": 3,
+            "requests": [
+                {"type": "set", "key": "a", "value": 400},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null},
+                {"type": "get", "key": "a", "value": null}
+            ],
+            "server_number": 3
+        }
+    ]
+}

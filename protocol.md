@@ -11,3 +11,8 @@ Each replica process P run the following algorithm:
 
 ## Linearizability
 Linearizability is a stronger consistency model than sequential consistency. So we need to modify the local read protocol to achieve linearizability. In this case, all operations (including reads) require a totally ordered broadcast.
+
+## Eventual Consistency
+Once a server receives a write request, it will update its local state and then propagate the write request to all other servers. The broadcast message will be delivered with a timestamp.
+
+Each server will need to record the timestamp of the last message it received. Once a server receive a broadcast message, it will update its local state if the timestamp of the message is greater than the timestamp of the last message it received.

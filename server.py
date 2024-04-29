@@ -228,7 +228,6 @@ class Server_sequential(Server):
     def _broadcast(self, message):
         self.send_socket.send_json(message)
 
-
     def _queue_handler(self):
         while 1:
             if self.queue:
@@ -293,6 +292,83 @@ class Server_sequential(Server):
                                 "msg_timestamp": message["timestamp"]}
                 self._broadcast(ack_message)
 
+
+class Server_eventual(Server):
+    """
+    This class represents a server in the cluster with eventual consistency level.
+    """
+    def __init__(self, server_number, port_number, contacts):
+        super().__init__(server_number, port_number, contacts)
+
+        self.lamport_clock = 0
+        self.lamport_clock_lock = threading.Lock()
+
+        self.last_modified = defaultdict(tuple) 
+        self.last_modified_lock = threading.Lock()
+
+        self.api_thread = threading.Thread(target=self._client_handler)
+        self.api_thread.start()
+
+        self.recv_thread = threading.Thread(target=self._server_handler)
+        self.recv_thread.start()
+
+
+    def _update_clock(self, timestamp=0): # if no timestamp is given, then it is a local event, just increment the clock
+        with self.lamport_clock_lock:
+            self.lamport_clock = max(self.lamport_clock, timestamp) + 1
+
+    def _broadcast(self, message):
+        self.send_socket.send_json(message)        
+        self._update_clock()
+
+    def _client_handler(self):
+        """
+        This method is responsible for handling the requests from the clients.
+        """
+        while 1:
+            socks = dict(self.poller.poll())
+            if self.api_socket in socks:
+                message = self.api_socket.recv_json()
+                # print(f"Server {self.server_number} received message: {message}")
+                self._update_clock()
+                if message["type"] == "get": # local read 
+                    self.api_socket.send_string(f"{message['key']}:{self.kv_store[message['key']]}")
+                    print(f"Server {self.server_number} got the value of the key {message['key']} as {self.kv_store[message['key']]}")
+                elif message["type"] == "set":
+                    with self.kv_store_lock:
+                        self.kv_store[message["key"]] = message["value"]
+                    self.api_socket.send_string("success")
+                    print(f"Server {self.server_number} set the value of the key {message['key']} to {message['value']}")
+                    self._update_clock()
+                    broadcast_message = {"timestamp": self.lamport_clock,
+                                            "operation": message["type"],
+                                            "key": message["key"],
+                                            "value": message["value"],
+                                            "id": self.server_number}
+                    self._broadcast(broadcast_message)
+
+    def _server_handler(self):
+        """
+        This method is responsible for handling the requests from the other servers.
+        """
+        while 1:
+            message = self.recv_socket.recv_json()
+            id = message["id"]
+            print(f"Server {self.server_number} received message from Server {id}: {message}")
+            self._update_clock(message["timestamp"])
+            modification = (message["timestamp"], message["id"], message["value"])
+            with self.last_modified_lock:
+                if self.last_modified[message["key"]] < modification:
+                    self.last_modified[message["key"]] = (message["timestamp"], message["value"])
+                    with self.kv_store_lock:
+                        self.kv_store[message["key"]] = message["value"]
+
+
+class Server_causal(Server):
+    def __init__(self, server_number, port_number, contacts):
+        super().__init__(server_number, port_number, contacts)
+
+    # TODO: implement the eventual consistency level
                 
     
 if __name__ == "__main__":
@@ -310,10 +386,10 @@ if __name__ == "__main__":
                                    contacts=port_number)
     elif consistency_level == "eventual":
         server = Server_eventual(server_number, 
-                                 port_number,
+                                 own_port,
                                  contacts=port_number)
     elif consistency_level == "causal":
         server = Server_causal(server_number, 
-                               port_number,
+                               own_port,
                                contacts=port_number)
 
