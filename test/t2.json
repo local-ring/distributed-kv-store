@@ -11,7 +11,7 @@
             "client_number": 0,
             "requests": [
                 {"type": "set", "key": "a", "value": 10},
-                {"type": "get", "key": "a", "value": null}
+                {"type": "get", "key": "b", "value": null}
             ],
             "server_number": 0
         },
@@ -22,14 +22,6 @@
                 {"type": "get", "key": "a", "value": null}
             ],
             "server_number": 1
-        },
-        {
-            "client_number": 2,
-            "requests": [
-                {"type": "set", "key": "a", "value": 30},
-                {"type": "get", "key": "b", "value": null}
-            ],
-            "server_number": 2
         }
     ]
 }

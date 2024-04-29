@@ -104,6 +104,8 @@ if __name__ == '__main__':
                                             str(test["port_number"])]
                                             )
             client_processes.append(client_process)
+
+        time.sleep(20) # wait for the clients to finish
     finally:
         for process in client_processes:
             process.kill()
