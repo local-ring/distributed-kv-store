@@ -109,10 +109,11 @@ class Server_linearizability(Server):
                         if self.acks[(timestamp, id, operation, key, value)] == self.total_servers:
                             timestamp, id, operation, key, value = heapq.heappop(self.queue)
                             if operation == "set":
-                                self.kv_store[key] = value
-                                if id == self.server_number:
-                                    self.api_socket.send_string("success")
-                                    print(f"Server {self.server_number} set the value of the key {key} to {value}")
+                                with self.kv_store_lock:
+                                    self.kv_store[key] = value
+                                    if id == self.server_number:
+                                        self.api_socket.send_string("success")
+                                        print(f"Server {self.server_number} set the value of the key {key} to {value}")
                             elif operation == "get":
                                 if id == self.server_number:
                                     self.api_socket.send_string(f"{key}:{self.kv_store[key]}")
@@ -194,14 +195,53 @@ class Server_sequential(Server):
     """
     This class represents a server in the cluster with sequential consistency level.
     """
+
     def __init__(self, server_number, port_number, contacts):
         super().__init__(server_number, port_number, contacts)
+
+        self.lamport_clock = 0
+        self.lamport_clock_lock = threading.Lock()
+
+        self.queue = [] # to store the requests
+        heapq.heapify(self.queue) # to sort the requests based on the timestamp
+        self.queue_lock = threading.Lock()
+
+        self.acks = defaultdict(int) # to store number of the acknowledgements 
+        self.acks_lock = threading.Lock()
+
+        self.total_servers = len(self.contacts)
 
         self.api_thread = threading.Thread(target=self._client_handler)
         self.api_thread.start()
 
         self.recv_thread = threading.Thread(target=self._server_handler)
         self.recv_thread.start()
+
+        self.queue_thread = threading.Thread(target=self._queue_handler)
+        self.queue_thread.start()
+
+
+    def _update_clock(self, timestamp=0): # if no timestamp is given, then it is a local event, just increment the clock
+        with self.lamport_clock_lock:
+            self.lamport_clock = max(self.lamport_clock, timestamp) + 1
+
+    def _broadcast(self, message):
+        self.send_socket.send_json(message)
+
+
+    def _queue_handler(self):
+        while 1:
+            if self.queue:
+                with self.queue_lock:
+                    timestamp, id, operation, key, value = self.queue[0]
+                    with self.acks_lock:
+                        if self.acks[(timestamp, id, operation, key, value)] == self.total_servers:
+                            timestamp, id, operation, key, value = heapq.heappop(self.queue)
+                            self.kv_store[key] = value
+                            if id == self.server_number:
+                                self.api_socket.send_string("success")
+                                print(f"Server {self.server_number} set the value of the key {key} to {value}")
+                       
 
     def _client_handler(self):
         """
@@ -211,32 +251,48 @@ class Server_sequential(Server):
             socks = dict(self.poller.poll())
             if self.api_socket in socks:
                 message = self.api_socket.recv_json()
-                # print(f"Server {self.server_number} received message: {message}")
-                if message["type"] == "set":
-                    self.kv_store[message["key"]] = message["value"]
-                    self.api_socket.send_string("success")
-                    print(f"Server {self.server_number} set the value of the key {message['key']} to {message['value']}")
-                elif message["type"] == "get":
+                self._update_clock()
+                if message["type"] == "get": # local read 
                     self.api_socket.send_string(f"{message['key']}:{self.kv_store[message['key']]}")
                     print(f"Server {self.server_number} got the value of the key {message['key']} as {self.kv_store[message['key']]}")
+                else:
+                    broadcast_message = {"timestamp": self.lamport_clock,
+                                            "operation": message["type"],
+                                            "key": message["key"],
+                                            "value": message["value"],
+                                            "ack": 0,
+                                            "id": self.server_number}
+                    self._broadcast(broadcast_message)
 
     def _server_handler(self):
         """
         This method is responsible for handling the requests from the other servers.
         """
         while 1:
-            socks = dict(self.poller.poll())
-            if self.recv_socket in socks:
-                message = self.recv_socket.recv_json()
-                # print(f"Server {self.server_number} received message: {message}")
-                if message["type"] == "set":
-                    self.kv_store[message["key"]] = message["value"]
-                    self.api_socket.send_string("success")
-                    print(f"Server {self.server_number} set the value of the key {message['key']} to {message['value']}")
-                elif message["type"] == "get":
-                    self.api_socket.send_string(f"{message['key']}:{self.kv_store[message['key']]}")
-                    print(f"Server {self.server_number} got the value of the key {message['key']} as {self.kv_store[message['key']]}")
-                        
+            message = self.recv_socket.recv_json()
+            id = message["id"]
+            # print(f"Server {self.server_number} received message from Server {id}: {message}")
+            self._update_clock(message["timestamp"])
+            if message["ack"] == 1: 
+                with self.acks_lock:
+                    self.acks[(message["msg_timestamp"], message["id"], message["operation"], message["key"], message["value"])] += 1
+            else: # id is the one who broadcasted the message
+                with self.queue_lock:
+                    heapq.heappush(self.queue, (message["timestamp"], 
+                                                message["id"], 
+                                                message["operation"], 
+                                                message["key"], 
+                                                message["value"]))
+                self._update_clock()
+                ack_message = {"timestamp": self.lamport_clock, 
+                                "id": message["id"],
+                                "operation": message["operation"],
+                                "key": message["key"],
+                                "value": message["value"],
+                                "ack": 1,
+                                "msg_timestamp": message["timestamp"]}
+                self._broadcast(ack_message)
+
                 
     
 if __name__ == "__main__":
@@ -250,7 +306,7 @@ if __name__ == "__main__":
                                         contacts=port_number)
     elif consistency_level == "sequential":
         server = Server_sequential(server_number, 
-                                   port_number,
+                                   own_port,
                                    contacts=port_number)
     elif consistency_level == "eventual":
         server = Server_eventual(server_number, 

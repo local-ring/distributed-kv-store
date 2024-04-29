@@ -105,7 +105,7 @@ if __name__ == '__main__':
                                             )
             client_processes.append(client_process)
 
-        time.sleep(30) # wait for the clients to finish
+        time.sleep(20) # wait for the clients to finish
     finally:
         for process in client_processes:
             process.kill()
