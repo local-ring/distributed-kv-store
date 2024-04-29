@@ -1,13 +1,7 @@
 import zmq
 import sys
-import json
 import time
 import random
-import threading
-from collections import defaultdict
-import heapq
-
-
 
 if __name__ == '__main__':
     client_number, server_number, requests, port_number = sys.argv[1:]
@@ -22,6 +16,8 @@ if __name__ == '__main__':
     socket = context.socket(zmq.REQ)
     socket.connect(f"tcp://localhost:{port_number[server_number][2]}")
     print(f"Client {client_number} is connected to the server {server_number}")
+
+    start_time = time.time()
 
     for request in requests:
         if request["type"] == "sleep": # we emulate a slow network by introducing delay
@@ -45,6 +41,8 @@ if __name__ == '__main__':
             # the feedback will be displayed in green color!
             print(f"\033[32mClient {client_number} received response: {response}\033[0m")
 
+    end_time = time.time()
+    print(f"\033[91mClient {client_number} has finished all the requests in {end_time - start_time} seconds\033[0m")
     
 
 

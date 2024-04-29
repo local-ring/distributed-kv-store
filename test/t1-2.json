@@ -1,0 +1,35 @@
+{
+    "num_servers": 3,
+    "consistency_level": "sequential",
+    "port_number": {
+        "0": [5310, 5420, 5830],
+        "1": [7411, 7361, 7291],
+        "2": [6352, 6472, 6592]    
+    },
+    "clients": [
+        {
+            "client_number": 0,
+            "requests": [
+                {"type": "set", "key": "a", "value": 10},
+                {"type": "get", "key": "a", "value": null}
+            ],
+            "server_number": 0
+        },
+        {
+            "client_number": 1,
+            "requests": [
+                {"type": "set", "key": "b", "value": 20},
+                {"type": "get", "key": "a", "value": null}
+            ],
+            "server_number": 1
+        },
+        {
+            "client_number": 2,
+            "requests": [
+                {"type": "set", "key": "a", "value": 30},
+                {"type": "get", "key": "b", "value": null}
+            ],
+            "server_number": 2
+        }
+    ]
+}
